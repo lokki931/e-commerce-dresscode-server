@@ -1,0 +1,12 @@
+node_modules
+# Keep environment variables out of version control
+.env
+/client/node_modules
+/client/.next/
+/client/out/
+/client/*.env
+/client/next-env.d.ts
+prisma/dev.db
+prisma/migrations/migration_lock.toml
+prisma/migrations/20240923125851_init/migration.sql
+client

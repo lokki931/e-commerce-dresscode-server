@@ -1,0 +1,12 @@
+//відправка json для регістрації
+{
+  "email": "lokki@gmail.com",
+  "password": "12345678",
+  "orders": {
+    "connect": []
+  }
+}
+
+npx prisma migrate dev --name init
+
+
