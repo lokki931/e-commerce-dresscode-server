@@ -1,33 +1,31 @@
 const prisma = require('../utils/prismaClient');
 const fs = require('fs');
 const path = require('path');
-
 const createProduct = async (req, res) => {
   const { name, description, price, stock, categories, discount, hit } = req.body;
   const imageFiles = req.files;
 
   try {
-    // Validate input
-    if (!name || !description || !price || !stock || !categories || !imageFiles) {
+    // Validate input fields
+    if (
+      !name ||
+      !description ||
+      !price ||
+      !stock ||
+      !categories ||
+      !imageFiles ||
+      imageFiles.length === 0
+    ) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Convert categories from comma-separated string to array
-    const categoryArray = categories.split(',').map((id) => parseInt(id.trim()));
+    // Ensure categories is an array
+    const categoryArray = Array.isArray(categories) ? categories : [categories];
 
-    // Ensure categories is a non-empty array
-    if (!Array.isArray(categoryArray) || categoryArray.length === 0) {
-      return res.status(400).json({ error: 'Categories must be a non-empty array' });
-    }
-
-    console.log(categoryArray); // Log the parsed category IDs
-
-    // Check if categories exist
+    // Validate that categories exist in the database
     const existingCategories = await prisma.category.findMany({
       where: {
-        id: {
-          in: categoryArray,
-        },
+        id: { in: categoryArray.map((id) => parseInt(id, 10)) },
       },
     });
 
@@ -35,76 +33,92 @@ const createProduct = async (req, res) => {
       return res.status(400).json({ error: 'Some categories do not exist.' });
     }
 
-    // Additional validation
-    if (isNaN(price) || isNaN(stock) || price <= 0 || stock < 0) {
-      return res
-        .status(400)
-        .json({ error: 'Price must be a positive number and stock cannot be negative' });
-    }
-
-    // Create product
+    // Create the product
     const product = await prisma.product.create({
       data: {
         name,
         description,
         price: parseFloat(price),
-        stock: parseInt(stock),
+        stock: parseInt(stock, 10),
         discount: discount === 'true' || discount === true,
         hit: hit === 'true' || hit === true,
         categories: {
-          connect: categoryArray.map((id) => ({ id })),
+          connect: categoryArray.map((id) => ({ id: parseInt(id, 10) })),
         },
       },
     });
 
-    // Create images
+    // Create associated image records
     const images = await Promise.all(
-      imageFiles.map((file) =>
-        prisma.image.create({
+      imageFiles.map((file) => {
+        const fileExists = fs.existsSync(file.path);
+        if (!fileExists) {
+          throw new Error(`File ${file.originalname} does not exist.`);
+        }
+
+        return prisma.image.create({
           data: {
-            url: `/uploads/${file.filename}`,
+            url: `http://localhost:5544/static/${file.filename}`,
             productId: product.id,
           },
-        }),
-      ),
+        });
+      }),
     );
 
+    // Respond with the created product and images
     res.status(201).json({ product, images });
   } catch (error) {
-    console.error(error);
+    console.error('Error creating product:', error.message);
+    console.error(error.stack); // Log the stack trace for more context
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 const updateProduct = async (req, res) => {
-  const { id } = req.params; // Assuming the product ID comes from the URL params
+  const { id } = req.params;
   const { name, description, price, stock, categories, discount, hit } = req.body;
   const imageFiles = req.files;
 
   try {
+    // Validate ID
+    const productId = parseInt(id);
+    if (isNaN(productId)) {
+      return res.status(400).json({ error: 'Invalid product ID' });
+    }
+
     // Check if the product exists
     const product = await prisma.product.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: productId },
     });
 
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // Validate input (optional fields like name, description, etc. should only be validated if provided)
-    if (price && (isNaN(price) || price <= 0)) {
+    // Validate price if provided
+    if (price !== undefined && (isNaN(price) || price <= 0)) {
       return res.status(400).json({ error: 'Price must be a positive number' });
     }
 
-    if (stock && (isNaN(stock) || stock < 0)) {
+    // Validate stock if provided
+    if (stock !== undefined && (isNaN(stock) || stock < 0)) {
       return res.status(400).json({ error: 'Stock cannot be negative' });
     }
 
     // Update categories if provided
     let categoryArray;
     if (categories) {
-      categoryArray = categories.split(',').map((id) => parseInt(id.trim()));
-      if (!Array.isArray(categoryArray) || categoryArray.length === 0) {
+      // Check if categories is an array
+      if (Array.isArray(categories)) {
+        categoryArray = categories.map((id) => parseInt(id)); // Map directly if it's an array
+      } else if (typeof categories === 'string') {
+        categoryArray = categories.split(',').map((id) => parseInt(id.trim())); // Split if it's a string
+      } else {
+        return res
+          .status(400)
+          .json({ error: 'Categories must be a non-empty array or a comma-separated string' });
+      }
+
+      if (categoryArray.length === 0) {
         return res.status(400).json({ error: 'Categories must be a non-empty array' });
       }
 
@@ -122,20 +136,27 @@ const updateProduct = async (req, res) => {
       }
     }
 
+    // Fetch old images before updating
+    const oldImages = await prisma.image.findMany({
+      where: {
+        productId: productId,
+      },
+    });
+
     // Update product data
     const updatedProduct = await prisma.product.update({
-      where: { id: parseInt(id) },
+      where: { id: productId },
       data: {
-        name: name || product.name, // Keep original value if not provided
-        description: description || product.description, // Keep original value if not provided
-        price: price ? parseFloat(price) : product.price, // Update only if price is provided
-        stock: stock ? parseInt(stock) : product.stock, // Update only if stock is provided
+        name: name || product.name,
+        description: description || product.description,
+        price: price !== undefined ? parseFloat(price) : product.price,
+        stock: stock !== undefined ? parseInt(stock) : product.stock,
         discount:
-          discount !== undefined ? discount === 'true' || discount === true : product.discount, // Update if provided
-        hit: hit !== undefined ? hit === 'true' || hit === true : product.hit, // Update if provided
+          discount !== undefined ? discount === 'true' || discount === true : product.discount,
+        hit: hit !== undefined ? hit === 'true' || hit === true : product.hit,
         ...(categories && {
           categories: {
-            set: categoryArray.map((id) => ({ id })), // Reset and connect new categories
+            set: categoryArray.map((id) => ({ id })),
           },
         }),
       },
@@ -144,11 +165,25 @@ const updateProduct = async (req, res) => {
     // Update images if provided
     let images;
     if (imageFiles && imageFiles.length > 0) {
-      // Optionally, you can delete old images before adding new ones
+      // Delete old image records
       await prisma.image.deleteMany({
         where: {
           productId: updatedProduct.id,
         },
+      });
+
+      // Delete old image files from the uploads folder
+      oldImages.forEach((image) => {
+        const imagePath = path.join(
+          __dirname,
+          '../uploads',
+          image.url.split('http://localhost:5544/static/')[1],
+        );
+        fs.unlink(imagePath, (err) => {
+          if (err) {
+            console.error(`Failed to delete image: ${image.url}`, err);
+          }
+        });
       });
 
       // Create new images
@@ -156,7 +191,7 @@ const updateProduct = async (req, res) => {
         imageFiles.map((file) =>
           prisma.image.create({
             data: {
-              url: `/uploads/${file.filename}`,
+              url: `http://localhost:5544/static/${file.filename}`,
               productId: updatedProduct.id,
             },
           }),
@@ -180,15 +215,42 @@ const deleteProduct = async (req, res) => {
       where: { productId },
     });
 
-    // Delete images from disk
-    images.forEach((image) => {
-      const filePath = path.join(__dirname, 'uploads', image.url.split('/uploads/')[1]);
-      fs.unlink(filePath, (err) => {
-        if (err) {
-          console.error(`Failed to delete image file: ${filePath}`, err);
-        }
-      });
+    if (images.length === 0) {
+      return res.status(404).json({ error: 'No images found for this product' });
+    }
+
+    // Create an array of promises for deleting images from disk
+    const deleteImagePromises = images.map(async (image) => {
+      const filename = image.url.split('http://localhost:5544/static/')[1];
+
+      if (!filename) {
+        console.error(`Failed to extract filename from URL: ${image.url}`);
+        return Promise.resolve(); // Skip to avoid errors
+      }
+
+      const filePath = path.join(__dirname, '../uploads', filename);
+      console.log(`Attempting to delete file at: ${filePath}`);
+
+      // Check if file exists before attempting to delete it
+      if (fs.existsSync(filePath)) {
+        return new Promise((resolve) => {
+          fs.unlink(filePath, (err) => {
+            if (err) {
+              console.error(`Failed to delete image file: ${filePath}`, err.message);
+            } else {
+              console.log(`Successfully deleted file: ${filePath}`);
+            }
+            resolve(); // Resolve regardless of success or failure
+          });
+        });
+      } else {
+        console.error(`File does not exist: ${filePath}`);
+        return Promise.resolve(); // Resolve to continue the process
+      }
     });
+
+    // Wait for all file deletions to complete
+    await Promise.all(deleteImagePromises);
 
     // Delete images from database
     await prisma.image.deleteMany({
@@ -202,6 +264,7 @@ const deleteProduct = async (req, res) => {
 
     res.status(200).json({ message: 'Product and associated images deleted successfully' });
   } catch (error) {
+    console.error('Error deleting product:', error);
     res.status(500).json({ error: error.message });
   }
 };

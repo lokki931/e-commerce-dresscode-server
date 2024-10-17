@@ -9,10 +9,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(
-  cors(),
-  // cors({
-  //   origin: 'http://localhost:3000', // Adjust the origin as per your needs
-  // }),
+  cors({
+    origin: 'http://localhost:3000', // Adjust the origin as per your needs
+  }),
 );
 app.get('/api/v1', (req, res) => {
   res.json({
