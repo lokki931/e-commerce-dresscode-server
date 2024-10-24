@@ -57,15 +57,30 @@ const getOrderById = async (req, res) => {
 };
 
 const getAllUsersOrders = async (req, res) => {
-  const { userId } = req.body;
+  const { userId } = req.params;
+
+  // Validate userId
+  if (!userId || isNaN(userId)) {
+    return res.status(400).json({ error: 'Invalid user ID' });
+  }
+
   try {
     const orders = await prisma.order.findMany({
       where: { userId: parseInt(userId) },
-      include: { products: { include: { product: true } } }, // includes product info
+      include: {
+        products: {
+          include: {
+            product: true, // Include product information in each order product
+          },
+        },
+      },
     });
-    res.json(orders);
+
+    // Respond with orders if found
+    return res.status(200).json(orders);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    console.error('Error fetching user orders:', error); // Log error for debugging
+    return res.status(500).json({ error: 'Failed to fetch orders' });
   }
 };
 

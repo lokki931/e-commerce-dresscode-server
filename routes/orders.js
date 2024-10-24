@@ -12,7 +12,7 @@ const {
 router.post('/', authenticateToken, createOrder);
 router.delete('/:id', authenticateToken, deleteOrder);
 router.get('/:id', authenticateToken, getOrderById);
-router.get('/users', authenticateToken, getAllUsersOrders);
+router.get('/users/:userId', authenticateToken, getAllUsersOrders);
 router.get('/', authenticateToken, getAllOrders);
 
 module.exports = router;
