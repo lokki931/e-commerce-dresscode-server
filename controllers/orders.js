@@ -25,31 +25,6 @@ const createOrder = async (req, res) => {
   }
 };
 
-const updateOrder = async (req, res) => {
-  const { id } = req.params;
-  const { total, products } = req.body;
-
-  try {
-    const updatedOrder = await prisma.order.update({
-      where: { id: parseInt(id) },
-      data: {
-        total,
-        products: {
-          deleteMany: {}, // Deletes all old products for this order
-          create: products.map((product) => ({
-            productId: product.productId,
-            quantity: product.quantity,
-          })),
-        },
-      },
-      include: { products: true },
-    });
-    res.json(updatedOrder);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update order and products' });
-  }
-};
-
 const deleteOrder = async (req, res) => {
   const { id } = req.params;
 
@@ -81,6 +56,19 @@ const getOrderById = async (req, res) => {
   }
 };
 
+const getAllUsersOrders = async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const orders = await prisma.order.findMany({
+      where: { userId: parseInt(userId) },
+      include: { products: { include: { product: true } } }, // includes product info
+    });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+};
+
 const getAllOrders = async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
@@ -94,8 +82,8 @@ const getAllOrders = async (req, res) => {
 
 module.exports = {
   createOrder,
-  updateOrder,
   deleteOrder,
   getOrderById,
+  getAllUsersOrders,
   getAllOrders,
 };

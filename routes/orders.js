@@ -3,16 +3,16 @@ const router = express.Router();
 const { authenticateToken } = require('../utils/verifyToken');
 const {
   createOrder,
-  updateOrder,
   deleteOrder,
   getOrderById,
   getAllOrders,
+  getAllUsersOrders,
 } = require('../controllers/orders');
 
 router.post('/', authenticateToken, createOrder);
-router.put('/:id', authenticateToken, updateOrder);
 router.delete('/:id', authenticateToken, deleteOrder);
-router.get('/:id', getOrderById);
-router.get('/', getAllOrders);
+router.get('/:id', authenticateToken, getOrderById);
+router.get('/users', authenticateToken, getAllUsersOrders);
+router.get('/', authenticateToken, getAllOrders);
 
 module.exports = router;
